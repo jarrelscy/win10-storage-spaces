@@ -3,20 +3,20 @@
 #Tested with one SSD and two HDD
 #
 #Pool that will suck in all drives
-$StoragePoolName = "My Storage Pool"
+$StoragePoolName = "MyStoragePool"
 #Tiers in the storage pool
 $SSDTierName = "SSDTier"
 $HDDTierName = "HDDTier"
 #Virtual Disk Name made up of disks in both tiers
-$TieredDiskName = "My Tiered VirtualDisk"
+$TieredDiskName = "MyTieredVirtualDisk"
 
 #Simple = striped.  Mirror only works if both can mirror AFIK
 #https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-R2-and-2012/dn387076(v=ws.11)
-$DriveTierResiliency = "Simple"
+$DriveTierResiliency = "Mirror"
 
 #Change to suit - drive later and the label name
-$TieredDriveLetter = "Z"
-$TieredDriveLabel = "StorageDrive"
+$TieredDriveLetter = "E"
+$TieredDriveLabel = "DATA"
 
 #Override the default sizing here - useful if have two different size SSDs or HDDs - set to smallest of pair
 #These must be Equal or smaller than the disk size available in that tier SSD and HDD
@@ -44,7 +44,7 @@ if ($UseUnspecifiedDriveIsHDD -ne $null){
     # show the type changed
     Get-PhysicalDisk -CanPool $True | ft FriendlyName, OperationalStatus, Size, MediaType
 }
-$PhysicalDisks = (Get-PhysicalDisk -CanPool $True | Where MediaType -NE UnSpecified)
+$PhysicalDisks = (Get-PhysicalDisk -CanPool $True | Where MediaType -NE UnSpecified )
 if ($PhysicalDisks -eq $null){
     throw "Abort! No physical Disks available"
 }       
@@ -65,18 +65,15 @@ $HDDTier = New-StorageTier -StoragePoolFriendlyName $StoragePoolName -FriendlyNa
 
 #Calculate tier sizes within this storage pool
 #Can override by setting sizes at top
-if ($SSDTierSize -eq $null){
-    $SSDTierSize = (Get-StorageTierSupportedSize -FriendlyName $SSDTierName -ResiliencySettingName $DriveTierResiliency).TierSizeMax
-    $SSDTierSize = [int64]($SSDTierSize * $UsableSpace)
-}
-if ($HDDTierSize -eq $null){
-    $HDDTierSize = (Get-StorageTierSupportedSize -FriendlyName $HDDTierName -ResiliencySettingName $DriveTierResiliency).TierSizeMax 
-    $HDDTierSize = [int64]($HDDTierSize * $UsableSpace)
-}
+$SSDTierSize = (Get-StorageTierSupportedSize -FriendlyName $SSDTierName -ResiliencySettingName $DriveTierResiliency).TierSizeMax
+$HDDTierSize = (Get-StorageTierSupportedSize -FriendlyName $HDDTierName -ResiliencySettingName $DriveTierResiliency).TierSizeMax 
+
+$SSDTierSize = [int64]($SSDTierSize * 0.95)
+$HDDTierSize = [int64]($HDDTierSize * 0.99)
 Write-Output "TierSizes: ( $SSDTierSize , $HDDTierSize )"
 
 # you can end up with different number of columns in SSD - Ex: With Simple 1SSD and 2HDD could end up with SSD-1Col, HDD-2Col
-New-VirtualDisk -StoragePoolFriendlyName $StoragePoolName -FriendlyName $TieredDiskName -StorageTiers @($SSDTier, $HDDTier) -StorageTierSizes @($SSDTierSize, $HDDTierSize) -ResiliencySettingName $DriveTierResiliency -AutoWriteCacheSize -AutoNumberOfColumns
+New-VirtualDisk -StoragePoolFriendlyName $StoragePoolName -FriendlyName $TieredDiskName -StorageTiers @($SSDTier, $HDDTier) -Interleave 65536 -StorageTierSizes @($SSDTierSize, $HDDTierSize ) -ResiliencySettingName $DriveTierResiliency -WriteCacheSize 5GB -AutoNumberOfColumns
 
 # initialize the disk, format and mount as a single volume
 Write-Output "preparing volume"
